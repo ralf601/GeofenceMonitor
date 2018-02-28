@@ -48,6 +48,7 @@ import java.util.Map;
 import io.realm.Realm;
 import io.realm.RealmChangeListener;
 import io.realm.RealmResults;
+import io.realm.Sort;
 
 /**
  * Created by hassanshakeel on 2/27/18.
@@ -80,6 +81,7 @@ public class HomeFragment extends BaseFragment
     private void unRegisterGpsStateChangeReceiver() {
         if (gpsStateChangeReceiver != null)
             getActivity().unregisterReceiver(gpsStateChangeReceiver);
+
     }
 
     @Override
@@ -199,7 +201,7 @@ public class HomeFragment extends BaseFragment
 
     @Override
     public void enableSignificantMotionStrategy(boolean enable) {
-        if(geofenceMonitor!=null){
+        if (geofenceMonitor != null) {
             geofenceMonitor.setMotionStrategy(enable);
         }
     }
@@ -215,8 +217,14 @@ public class HomeFragment extends BaseFragment
 
     }
 
-    @SuppressLint("MissingPermission")
     private void setupGps() {
+        if (ContextCompat.checkSelfPermission(getActivity(),
+                Manifest.permission.ACCESS_FINE_LOCATION)
+                != PackageManager.PERMISSION_GRANTED || ContextCompat.checkSelfPermission(getActivity(),
+                Manifest.permission.ACCESS_COARSE_LOCATION)
+                != PackageManager.PERMISSION_GRANTED) {
+            return;
+        }
         registerGpsStateChangeReceiver();
         locationManager = (LocationManager) getActivity().getSystemService(Context.LOCATION_SERVICE);
         boolean enabled = locationManager.isProviderEnabled(LocationManager.GPS_PROVIDER);
@@ -316,9 +324,33 @@ public class HomeFragment extends BaseFragment
     }
 
     @Override
-    public void onEvent(GeofenceMonitor.GeofenceEvent event, Geofence geofence) {
+    public void onEvent(final GeofenceMonitor.GeofenceEvent event, final Geofence geofence) {
         String message = (event == GeofenceMonitor.GeofenceEvent.Exit ? "Leaving from" : "Entering to") + " " + geofence.getAlias();
         Utils.sendNotification(getActivity(), geofence.getAlias(), message);
+        Realm.getDefaultInstance().executeTransactionAsync(new Realm.Transaction() {
+            @Override
+            public void execute(Realm realm) {
+                MyGeofence geofence1 = new MyGeofence(new LatLng(geofence.getLat(), geofence.getLon()), geofence.getRadius(), geofence.getAlias());
+                int type = event == GeofenceMonitor.GeofenceEvent.Exit ? Notification.NOTIFICATION_ENTER_GEOFENCE : Notification.NOTIFICATION_ENTER_GEOFENCE;
+                Notification notification = new Notification(geofence1, Utils.getDateTimeForUi(), type);
+                realm.insertOrUpdate(notification);
+            }
+        }, new Realm.Transaction.OnSuccess() {
+            @Override
+            public void onSuccess() {
+                Realm.getDefaultInstance().where(Notification.class).findAllSortedAsync("dateTime", Sort.DESCENDING)
+                        .addChangeListener(new RealmChangeListener<RealmResults<Notification>>() {
+                    @Override
+                    public void onChange(RealmResults<Notification> notifications) {
+                        try {
+                            homeView.bindNotificationHistory(notifications);
+                        } catch (Exception e) {
+                            e.printStackTrace();
+                        }
+                    }
+                });
+            }
+        });
     }
 
     @Override

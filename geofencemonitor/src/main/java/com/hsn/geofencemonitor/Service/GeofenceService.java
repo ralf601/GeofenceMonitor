@@ -12,6 +12,7 @@ import android.os.Handler;
 import android.os.IBinder;
 import android.support.annotation.Nullable;
 import android.support.annotation.RequiresPermission;
+import android.util.Log;
 
 import com.hsn.geofencemonitor.GeofenceMonitor;
 import com.hsn.geofencemonitor.Model.Geofence;
@@ -28,21 +29,20 @@ import java.util.Map;
 @SuppressLint("MissingPermission")
 public class GeofenceService extends Service implements GeofenceMonitor, LocationListener {
 
-    public static final String ACTION_GEOFENCE_NOTIFICATION = "ACTION_GEOFENCE_NOTIFICATION";
 
 
     private static class LocationUpdateConfig {
-        public int minLocationUpdateTime, minlocationUpdateDistance, type,minAccuracy;
+        public int minLocationUpdateTime, minlocationUpdateDistance, type, minAccuracy;
 
         @Override
         public String toString() {
             switch (type) {
                 case 0:
-                    return "LowPower@" + minLocationUpdateTime + "s";
+                    return "LowPower@" + minLocationUpdateTime / 1000 + "s";
                 case 1:
-                    return "MedPower@" + minLocationUpdateTime + "s";
+                    return "MedPower@" + minLocationUpdateTime / 1000 + "s";
                 case 2:
-                    return "HighPower@" + minLocationUpdateTime + "s";
+                    return "HighPower@" + minLocationUpdateTime / 1000 + "s";
             }
             return "unknown";
         }
@@ -58,15 +58,15 @@ public class GeofenceService extends Service implements GeofenceMonitor, Locatio
         }
 
         public static LocationUpdateConfig getLowPowerConfig() {
-            return new LocationUpdateConfig(10, 3, 0,30);
+            return new LocationUpdateConfig(10 * 1000, 3, 0, 30);
         }
 
         public static LocationUpdateConfig getMidPowerConfig() {
-            return new LocationUpdateConfig(5, 2, 1,15);
+            return new LocationUpdateConfig(5 * 1000, 2, 1, 120);
         }
 
         public static LocationUpdateConfig getHighPowerConfig() {
-            return new LocationUpdateConfig(1, 1, 2,1);
+            return new LocationUpdateConfig(1 * 1000, 1, 2, 3);
         }
     }
 
@@ -76,7 +76,7 @@ public class GeofenceService extends Service implements GeofenceMonitor, Locatio
 
     private final String GPS_PROVIDER = LocationManager.GPS_PROVIDER;
     private final String NETWORK_PROVIDER = LocationManager.NETWORK_PROVIDER;
-
+    private final String TAG = getClass().getSimpleName();
     private final IBinder mBinder = new GeofenceServiceBinder();
     private LocationManager locationManager;
     private MotionDetector motionDetector;
@@ -95,6 +95,11 @@ public class GeofenceService extends Service implements GeofenceMonitor, Locatio
         @Override
         public void run() {
             //no gps fix
+            if (geofenceMap.size() == 0) {
+                handler.postDelayed(this, 1 * 1000);//keep checking  at every 1 second
+                return;
+            }
+
             if (lastLocation == null) {
                 enableGpsAndNetworkProvider(currentLocationUpdateConfig);
             } else {
@@ -119,17 +124,21 @@ public class GeofenceService extends Service implements GeofenceMonitor, Locatio
                     }
                 } else {
                     //not using motion strategy
-                    if (System.currentTimeMillis() - lastLocation.getTime() > MAX_LAST_KNOWN_LOCATION_AGE) {
+                    long diff = System.currentTimeMillis() - lastLocation.getTime();
+                    if (diff > MAX_LAST_KNOWN_LOCATION_AGE) {
                         //last location very old need new location from gps
                         enableGpsAndNetworkProvider(currentLocationUpdateConfig);
+                        //Log.d(TAG,"Location expired diff="+diff);
                     } else {
                         //location is good we should continue with network provider
                         enableNetworkProvider();
+                        //Log.d(TAG,"Location valid from network provider="+diff);
+
                     }
                 }
             }
 
-            handler.postDelayed(this, 1 * 1000);//keep checking motion at every 1 second
+            handler.postDelayed(this, 1 * 1000);//keep checking  at every 1 second
 
         }
     };
@@ -168,8 +177,10 @@ public class GeofenceService extends Service implements GeofenceMonitor, Locatio
     @Override
     public void addGeofence(Geofence geofence) {
         //location needed as a new geofence added
-        geofenceMap.put(geofence.getId(), geofence);
-        enableGpsAndNetworkProvider(currentLocationUpdateConfig);
+        if (geofenceMap.get(geofence.getId()) == null) {
+            geofenceMap.put(geofence.getId(), geofence);
+            enableGpsAndNetworkProvider(currentLocationUpdateConfig);
+        }
     }
 
     @Override
@@ -183,9 +194,8 @@ public class GeofenceService extends Service implements GeofenceMonitor, Locatio
             return;
         //location needed as a new geofence added
         for (Geofence geofence : geofences) {
-            geofenceMap.put(geofence.getId(), geofence);
+            addGeofence(geofence);
         }
-        enableGpsAndNetworkProvider(currentLocationUpdateConfig);
 
     }
 
@@ -269,6 +279,11 @@ public class GeofenceService extends Service implements GeofenceMonitor, Locatio
         //send entry / exit events
         checkAndNotifyGeofenceEvent();
         Float distance = getNearestGeofenceDistance();
+        if (distance == null) {
+            //no geofences to monitor
+            disableAllProviders();
+            return;
+        }
         if (distance < 10) {
             //need to turn on gps
             enableGpsAndNetworkProvider(LocationUpdateConfig.getHighPowerConfig());
@@ -311,7 +326,8 @@ public class GeofenceService extends Service implements GeofenceMonitor, Locatio
         //turn off all providers
         disableAllProviders();
         //turn on only network provider
-        locationManager.requestLocationUpdates(NETWORK_PROVIDER, currentLocationUpdateConfig.minLocationUpdateTime, currentLocationUpdateConfig.minlocationUpdateDistance, this);
+        if (!networkProviderEnabled)
+            locationManager.requestLocationUpdates(NETWORK_PROVIDER, currentLocationUpdateConfig.minLocationUpdateTime, currentLocationUpdateConfig.minlocationUpdateDistance, this);
         if (locationProviderChangeListener != null)
             locationProviderChangeListener.currentProvider(NETWORK_PROVIDER + " " + currentLocationUpdateConfig.toString());
         networkProviderEnabled = true;
@@ -351,6 +367,7 @@ public class GeofenceService extends Service implements GeofenceMonitor, Locatio
                 //outside
                 if (geofence.getState() == Geofence.STATE_INSIDE) {
                     geofence.setState(Geofence.STATE_OUTSIDE);
+                    geofenceMap.put(geofence.getId(), geofence);
                     if (geofenceEventListener != null) {
                         geofenceEventListener.onEvent(GeofenceEvent.Exit, geofence);
                     }
@@ -359,6 +376,7 @@ public class GeofenceService extends Service implements GeofenceMonitor, Locatio
                 //inside geofence
                 if (geofence.getState() == Geofence.STATE_OUTSIDE) {
                     geofence.setState(Geofence.STATE_INSIDE);
+                    geofenceMap.put(geofence.getId(), geofence);
                     if (geofenceEventListener != null) {
                         geofenceEventListener.onEvent(GeofenceEvent.Enter, geofence);
                     }

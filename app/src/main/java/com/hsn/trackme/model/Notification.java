@@ -36,7 +36,7 @@ public class Notification extends RealmObject {
     }
 
     public String getMessage() {
-        return (notificationType == 0 ? "Entering" : "Leaving")
+        return (notificationType == 0 ? "Entering to " : "Leaving from")
                 + " " + geofence.getTag();
     }
 }
