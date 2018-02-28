@@ -89,9 +89,16 @@ public interface GeofenceMonitor {
      */
     void setOnLocationProviderChangeListener(OnLocationProviderChangeListener locationProviderChangeListener);
 
+    /**
+     * Stop monitoring geofences
+     */
     void stopMonitoring();
 
 
-
+    /**
+     * Use siginificant motion strategy to monitor geofence
+     * @param enabled enable or disable strategy
+     */
+    void setMotionStrategy(boolean enabled);
 
 }

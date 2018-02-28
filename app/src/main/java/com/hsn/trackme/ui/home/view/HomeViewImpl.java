@@ -3,9 +3,12 @@ package com.hsn.trackme.ui.home.view;
 import android.location.Location;
 import android.support.v7.widget.LinearLayoutManager;
 import android.support.v7.widget.RecyclerView;
+import android.util.Log;
 import android.view.LayoutInflater;
 import android.view.View;
 import android.view.ViewGroup;
+import android.widget.CompoundButton;
+import android.widget.Switch;
 import android.widget.TextView;
 
 import com.google.android.gms.maps.CameraUpdate;
@@ -31,7 +34,7 @@ import java.util.Map;
  * Created by hassanshakeel on 2/27/18.
  */
 
-public class HomeViewImpl implements HomeView, NotificationHistoryAdapter.OnItemClickListener {
+public class HomeViewImpl implements HomeView, NotificationHistoryAdapter.OnItemClickListener, View.OnClickListener {
 
     private GoogleMap mMap;
     private View mRootView;
@@ -42,6 +45,9 @@ public class HomeViewImpl implements HomeView, NotificationHistoryAdapter.OnItem
     private boolean cameraMoved = false;
     private TextView locationProvider;
     private Marker currLocationMarker;
+    private View gpsEnableMessageView;
+    private Switch motionStrategy;
+
     public HomeViewImpl(LayoutInflater inflater, ViewGroup container) {
         mRootView = inflater.inflate(R.layout.fragment_home, container, false);
         initView(mRootView);
@@ -59,11 +65,20 @@ public class HomeViewImpl implements HomeView, NotificationHistoryAdapter.OnItem
     public void initView(View view) {
         notificationHistoryListView = view.findViewById(R.id.list);
         locationProvider = view.findViewById(R.id.locationProvider);
+        gpsEnableMessageView = view.findViewById(R.id.enableGpsWarning);
+        motionStrategy = view.findViewById(R.id.swtch);
+
     }
 
     @Override
     public void initListeners() {
-
+        gpsEnableMessageView.setOnClickListener(this);
+        motionStrategy.setOnCheckedChangeListener(new CompoundButton.OnCheckedChangeListener() {
+            @Override
+            public void onCheckedChanged(CompoundButton compoundButton, boolean b) {
+                    interactor.enableSignificantMotionStrategy(b);
+            }
+        });
     }
 
     @Override
@@ -73,6 +88,7 @@ public class HomeViewImpl implements HomeView, NotificationHistoryAdapter.OnItem
         mMap.setOnMapLongClickListener(new GoogleMap.OnMapLongClickListener() {
             @Override
             public void onMapLongClick(LatLng latLng) {
+                Log.i("Clicked",latLng.latitude+","+latLng.longitude);
                 if (interactor != null)
                     interactor.addGeofence(latLng);
             }
@@ -111,10 +127,10 @@ public class HomeViewImpl implements HomeView, NotificationHistoryAdapter.OnItem
             }
         }
 
-        if (!cameraMoved) {
-            moveCameraFirstTime();
-            cameraMoved = true;
-        }
+//        if (!cameraMoved) {
+//            moveCameraFirstTime();
+//            cameraMoved = true;
+//        }
     }
 
     @Override
@@ -134,15 +150,37 @@ public class HomeViewImpl implements HomeView, NotificationHistoryAdapter.OnItem
 
     @Override
     public void updateCurrentLocation(Location location) {
-        if(currLocationMarker!=null){
-            currLocationMarker.setPosition(new LatLng(location.getLatitude(),location.getLongitude()));
+
+        if (currLocationMarker != null) {
+            currLocationMarker.setPosition(new LatLng(location.getLatitude(), location.getLongitude()));
             return;
         }
         MarkerOptions markerOptions = new MarkerOptions();
-        markerOptions.position(new LatLng(location.getLatitude(),location.getLongitude()));
+        markerOptions.position(new LatLng(location.getLatitude(), location.getLongitude()));
         markerOptions.title("Current Position");
         markerOptions.icon(BitmapDescriptorFactory.defaultMarker(BitmapDescriptorFactory.HUE_MAGENTA));
-        currLocationMarker = mMap.addMarker(markerOptions);    }
+        currLocationMarker = mMap.addMarker(markerOptions);
+
+        if (!cameraMoved) {
+            cameraMoved = true;
+            CameraUpdate cameraUpdate = CameraUpdateFactory.newLatLngZoom(new LatLng(location.getLatitude(), location.getLongitude()), 10);
+            mMap.animateCamera(cameraUpdate);
+        }
+    }
+
+    @Override
+    public void gpsEnabled(boolean enabled) {
+        if (enabled) {
+            gpsEnableMessageView.setVisibility(View.GONE);
+            locationProvider.setVisibility(View.VISIBLE);
+            motionStrategy.setVisibility(View.VISIBLE);
+        } else {
+            gpsEnableMessageView.setVisibility(View.VISIBLE);
+            locationProvider.setVisibility(View.GONE);
+            motionStrategy.setVisibility(View.GONE);
+
+        }
+    }
 
     @Override
     public void onClick(Notification notification) {
@@ -151,13 +189,8 @@ public class HomeViewImpl implements HomeView, NotificationHistoryAdapter.OnItem
 
     }
 
-
-    private void updateUserCurrentLocation(LatLng latLng ){
-
-    }
-
     private void moveCameraFirstTime() {
-        if(geofenceMap.size()==0)
+        if (geofenceMap.size() == 0)
             return;
 
         LatLngBounds.Builder builder = new LatLngBounds.Builder();
@@ -180,4 +213,14 @@ public class HomeViewImpl implements HomeView, NotificationHistoryAdapter.OnItem
         notificationHistoryListView.setAdapter(notificationHistoryAdapter);
     }
 
+    @Override
+    public void onClick(View view) {
+        switch (view.getId()) {
+            case R.id.enableGpsWarning:
+                interactor.enableGps();
+                break;
+            default:
+                break;
+        }
+    }
 }

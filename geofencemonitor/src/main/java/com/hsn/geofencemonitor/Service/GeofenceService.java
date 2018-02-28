@@ -3,11 +3,6 @@ package com.hsn.geofencemonitor.Service;
 import android.annotation.SuppressLint;
 import android.app.Service;
 import android.content.Intent;
-import android.hardware.Sensor;
-import android.hardware.SensorManager;
-import android.hardware.TriggerEvent;
-import android.hardware.TriggerEventListener;
-import android.location.Criteria;
 import android.location.Location;
 import android.location.LocationListener;
 import android.location.LocationManager;
@@ -36,8 +31,49 @@ public class GeofenceService extends Service implements GeofenceMonitor, Locatio
     public static final String ACTION_GEOFENCE_NOTIFICATION = "ACTION_GEOFENCE_NOTIFICATION";
 
 
-    private final int DEFAULT_MIN_LOCATION_UPDATE_TIME = 1 * 1000; //seconds
-    private final int DEFAULT_MIN_LOCATION_UPDATE_DISTANCE = 1;//meters
+    private static class LocationUpdateConfig {
+        public int minLocationUpdateTime, minlocationUpdateDistance, type,minAccuracy;
+
+        @Override
+        public String toString() {
+            switch (type) {
+                case 0:
+                    return "LowPower@" + minLocationUpdateTime + "s";
+                case 1:
+                    return "MedPower@" + minLocationUpdateTime + "s";
+                case 2:
+                    return "HighPower@" + minLocationUpdateTime + "s";
+            }
+            return "unknown";
+        }
+
+        public LocationUpdateConfig(int minLocationUpdateTime,
+                                    int minlocationUpdateDistance,
+                                    int type,
+                                    int minAccuracy) {
+            this.minLocationUpdateTime = minLocationUpdateTime;
+            this.minlocationUpdateDistance = minlocationUpdateDistance;
+            this.minAccuracy = minAccuracy;
+            this.type = type;
+        }
+
+        public static LocationUpdateConfig getLowPowerConfig() {
+            return new LocationUpdateConfig(10, 3, 0,30);
+        }
+
+        public static LocationUpdateConfig getMidPowerConfig() {
+            return new LocationUpdateConfig(5, 2, 1,15);
+        }
+
+        public static LocationUpdateConfig getHighPowerConfig() {
+            return new LocationUpdateConfig(1, 1, 2,1);
+        }
+    }
+
+
+    private final int MAX_LAST_KNOWN_LOCATION_AGE = 15 * 1000; //if no location found in 15 seconds turn on gps provider
+
+
     private final String GPS_PROVIDER = LocationManager.GPS_PROVIDER;
     private final String NETWORK_PROVIDER = LocationManager.NETWORK_PROVIDER;
 
@@ -52,24 +88,49 @@ public class GeofenceService extends Service implements GeofenceMonitor, Locatio
     private boolean motionStrategyEnabled = true;
     private boolean networkProviderEnabled = false;
     private boolean gpsProviderEnabled = false;
+    private LocationUpdateConfig currentLocationUpdateConfig = LocationUpdateConfig.getMidPowerConfig();
 
 
-    private final Runnable toggleLocationUpdatesBasedOnMotion = new Runnable() {
+    private final Runnable tuneLocationUpdates = new Runnable() {
         @Override
         public void run() {
-            if (!motionDetector.isMoving() && lastLocation != null) {
-                //no significant movement so we dont want location updates
-                disableAllProviders();
+            //no gps fix
+            if (lastLocation == null) {
+                enableGpsAndNetworkProvider(currentLocationUpdateConfig);
             } else {
-                //check if location updates are on
-                boolean locationUpdatesOn = networkProviderEnabled && gpsProviderEnabled;
-                if (!locationUpdatesOn && geofenceMap.size() > 0) {
-                    //we need to turn on location updates as there is a significant movement
-                    //enabling only network provider as it will be automatically switched to gps if needed
-                    enableNetworkProvider();
+                if (motionStrategyEnabled) {
+                    if (!motionDetector.isMoving()) {
+                        //no significant movement so we don't want location updates
+                        disableAllProviders();
+                    } else {
+                        //check if location updates are on
+                        boolean locationUpdatesOn = networkProviderEnabled && gpsProviderEnabled;
+                        if (!locationUpdatesOn && geofenceMap.size() > 0) {
+                            //we need to turn on location updates as there is a significant movement
+                            //enabling only network provider as it will be automatically switched to gps if needed
+                            if (System.currentTimeMillis() - lastLocation.getTime() > MAX_LAST_KNOWN_LOCATION_AGE) {
+                                //last location very old need new location from gps
+                                enableGpsAndNetworkProvider(currentLocationUpdateConfig);
+                            } else {
+                                //location is good we should continue with network provider
+                                enableNetworkProvider();
+                            }
+                        }
+                    }
+                } else {
+                    //not using motion strategy
+                    if (System.currentTimeMillis() - lastLocation.getTime() > MAX_LAST_KNOWN_LOCATION_AGE) {
+                        //last location very old need new location from gps
+                        enableGpsAndNetworkProvider(currentLocationUpdateConfig);
+                    } else {
+                        //location is good we should continue with network provider
+                        enableNetworkProvider();
+                    }
                 }
             }
+
             handler.postDelayed(this, 1 * 1000);//keep checking motion at every 1 second
+
         }
     };
 
@@ -85,15 +146,18 @@ public class GeofenceService extends Service implements GeofenceMonitor, Locatio
         super.onCreate();
         locationManager = (LocationManager) getSystemService(LOCATION_SERVICE);
 
-        try {
-            motionDetector = new MotionDetector(getApplicationContext());
-            motionDetector.startDetectingMotion();
-            if (motionStrategyEnabled) {
-                handler.post(toggleLocationUpdatesBasedOnMotion);
+        if (motionStrategyEnabled) {
+            try {
+                motionDetector = new MotionDetector(getApplicationContext());
+                motionDetector.startDetectingMotion();
+                motionStrategyEnabled = true;
+            } catch (Exception e) {
+                e.printStackTrace();
+                motionStrategyEnabled = false;
             }
-        } catch (Exception e) {
-            e.printStackTrace();
         }
+        handler.post(tuneLocationUpdates);
+
     }
 
     @Override
@@ -105,7 +169,7 @@ public class GeofenceService extends Service implements GeofenceMonitor, Locatio
     public void addGeofence(Geofence geofence) {
         //location needed as a new geofence added
         geofenceMap.put(geofence.getId(), geofence);
-        enableGpsAndNetworkProvider();
+        enableGpsAndNetworkProvider(currentLocationUpdateConfig);
     }
 
     @Override
@@ -121,20 +185,41 @@ public class GeofenceService extends Service implements GeofenceMonitor, Locatio
         for (Geofence geofence : geofences) {
             geofenceMap.put(geofence.getId(), geofence);
         }
-        enableGpsAndNetworkProvider();
+        enableGpsAndNetworkProvider(currentLocationUpdateConfig);
 
     }
 
     @RequiresPermission("android.permission.ACCESS_FINE_LOCATION")
     @Override
     public void startMonitor() {
-        enableGpsAndNetworkProvider();
+        enableGpsAndNetworkProvider(currentLocationUpdateConfig);
     }
 
     @RequiresPermission("android.permission.ACCESS_FINE_LOCATION")
     @Override
     public void stopMonitoring() {
         locationManager.removeUpdates(this);
+    }
+
+    @Override
+    public void setMotionStrategy(boolean enabled) {
+        if (enabled && motionDetector == null) {
+            try {
+                motionDetector = new MotionDetector(getApplicationContext());
+                motionDetector.startDetectingMotion();
+                motionStrategyEnabled = true;
+            } catch (Exception e) {
+                e.printStackTrace();
+                motionStrategyEnabled = false;
+            }
+        } else {
+            motionStrategyEnabled = false;
+            if (motionDetector != null) {
+                motionDetector.stopDetectingMotion();
+                motionDetector = null;
+            }
+
+        }
     }
 
     @Override
@@ -155,8 +240,10 @@ public class GeofenceService extends Service implements GeofenceMonitor, Locatio
 
     @Override
     public void onLocationChanged(Location location) {
-        lastLocation = location;
-        handleLocationChange();
+        if (location.hasAccuracy() && location.getAccuracy() <= currentLocationUpdateConfig.minAccuracy) {
+            lastLocation = location;
+            handleLocationChange();
+        }
     }
 
     @Override
@@ -182,10 +269,15 @@ public class GeofenceService extends Service implements GeofenceMonitor, Locatio
         //send entry / exit events
         checkAndNotifyGeofenceEvent();
         Float distance = getNearestGeofenceDistance();
-        if (distance < 100) {
+        if (distance < 10) {
             //need to turn on gps
-            if (!gpsProviderEnabled)
-                enableGpsAndNetworkProvider();
+            enableGpsAndNetworkProvider(LocationUpdateConfig.getHighPowerConfig());
+        } else if (distance < 50) {
+            //need to turn on gps or tweak config
+            enableGpsAndNetworkProvider(LocationUpdateConfig.getMidPowerConfig());
+        } else if (distance < 100) {
+            //need to turn on gps
+            enableGpsAndNetworkProvider(LocationUpdateConfig.getLowPowerConfig());
         } else {
             //enable network provider only
             enableNetworkProvider();
@@ -200,12 +292,18 @@ public class GeofenceService extends Service implements GeofenceMonitor, Locatio
             locationProviderChangeListener.currentProvider("idle");
     }
 
-    private void enableGpsAndNetworkProvider() {
+    private void enableGpsAndNetworkProvider(LocationUpdateConfig locationUpdateConfig) {
+        if (!gpsProviderEnabled || locationUpdateConfig.type != currentLocationUpdateConfig.type) {
+            locationManager.requestLocationUpdates(GPS_PROVIDER, locationUpdateConfig.minLocationUpdateTime, locationUpdateConfig.minlocationUpdateDistance, this);
+        }
+        if (!networkProviderEnabled) {
+            locationManager.requestLocationUpdates(NETWORK_PROVIDER, locationUpdateConfig.minLocationUpdateTime, locationUpdateConfig.minlocationUpdateDistance, this);
+        }
+        currentLocationUpdateConfig = locationUpdateConfig;
         networkProviderEnabled = gpsProviderEnabled = true;
-        locationManager.requestLocationUpdates(GPS_PROVIDER, DEFAULT_MIN_LOCATION_UPDATE_TIME, DEFAULT_MIN_LOCATION_UPDATE_DISTANCE, this);
-        locationManager.requestLocationUpdates(NETWORK_PROVIDER, DEFAULT_MIN_LOCATION_UPDATE_TIME, DEFAULT_MIN_LOCATION_UPDATE_DISTANCE, this);
-        if (locationProviderChangeListener != null)
-            locationProviderChangeListener.currentProvider(GPS_PROVIDER + " | " + NETWORK_PROVIDER);
+        if (locationProviderChangeListener != null) {
+            locationProviderChangeListener.currentProvider(GPS_PROVIDER + " | " + NETWORK_PROVIDER + " " + currentLocationUpdateConfig.toString());
+        }
 
     }
 
@@ -213,9 +311,9 @@ public class GeofenceService extends Service implements GeofenceMonitor, Locatio
         //turn off all providers
         disableAllProviders();
         //turn on only network provider
-        locationManager.requestLocationUpdates(NETWORK_PROVIDER, DEFAULT_MIN_LOCATION_UPDATE_TIME, DEFAULT_MIN_LOCATION_UPDATE_DISTANCE, this);
+        locationManager.requestLocationUpdates(NETWORK_PROVIDER, currentLocationUpdateConfig.minLocationUpdateTime, currentLocationUpdateConfig.minlocationUpdateDistance, this);
         if (locationProviderChangeListener != null)
-            locationProviderChangeListener.currentProvider(NETWORK_PROVIDER);
+            locationProviderChangeListener.currentProvider(NETWORK_PROVIDER + " " + currentLocationUpdateConfig.toString());
         networkProviderEnabled = true;
     }
 

@@ -19,6 +19,9 @@ public interface HomeView extends ViewMvc {
     interface HomeInteractor {
         void onNotificationClicked(Notification notification);
         void addGeofence(LatLng latLng);
+        void enableGps();
+        void enableSignificantMotionStrategy(boolean enable);
+
 
     }
 
@@ -36,5 +39,8 @@ public interface HomeView extends ViewMvc {
     void setInteractor(HomeInteractor interactor);
 
     void updateCurrentLocation(Location location);
+
+    void gpsEnabled(boolean enable);
+
 
 }

@@ -91,6 +91,12 @@ public class GeofenceMonitorImpl implements GeofenceMonitor, ServiceConnection {
     }
 
     @Override
+    public void setMotionStrategy(boolean enabled) {
+        checkReady();
+        geofenceMonitor.setMotionStrategy(enabled);
+    }
+
+    @Override
     public void onServiceConnected(ComponentName componentName, IBinder iBinder) {
         GeofenceService.GeofenceServiceBinder binder = (GeofenceService.GeofenceServiceBinder) iBinder;
         geofenceMonitor = binder.getGeofenceMonitor();

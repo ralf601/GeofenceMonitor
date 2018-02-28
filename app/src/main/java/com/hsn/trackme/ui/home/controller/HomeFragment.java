@@ -1,9 +1,15 @@
 package com.hsn.trackme.ui.home.controller;
 
 import android.Manifest;
+import android.annotation.SuppressLint;
+import android.content.BroadcastReceiver;
+import android.content.Context;
 import android.content.DialogInterface;
+import android.content.Intent;
+import android.content.IntentFilter;
 import android.content.pm.PackageManager;
 import android.location.Location;
+import android.location.LocationManager;
 import android.os.Bundle;
 import android.support.annotation.NonNull;
 import android.support.annotation.Nullable;
@@ -55,7 +61,26 @@ public class HomeFragment extends BaseFragment
     private HomeView homeView;
     private GeofenceMonitor geofenceMonitor;
     private List<MyGeofence> geofences = new ArrayList<>();
-    boolean permissionsGaranted = false;
+    private boolean permissionsGaranted = false;
+    private LocationManager locationManager;
+
+    final BroadcastReceiver gpsStateChangeReceiver = new BroadcastReceiver() {
+        @Override
+        public void onReceive(Context context, Intent intent) {
+            locationManager = (LocationManager) getActivity().getSystemService(Context.LOCATION_SERVICE);
+            boolean enabled = locationManager.isProviderEnabled(LocationManager.GPS_PROVIDER);
+            homeView.gpsEnabled(enabled);
+        }
+    };
+
+    private void registerGpsStateChangeReceiver() {
+        getActivity().registerReceiver(gpsStateChangeReceiver, new IntentFilter("android.location.PROVIDERS_CHANGED"));
+    }
+
+    private void unRegisterGpsStateChangeReceiver() {
+        if (gpsStateChangeReceiver != null)
+            getActivity().unregisterReceiver(gpsStateChangeReceiver);
+    }
 
     @Override
     public View onCreateView(LayoutInflater inflater, ViewGroup container,
@@ -80,6 +105,8 @@ public class HomeFragment extends BaseFragment
             }
         });
         checkPermissions();
+
+
     }
 
     private void setupGeofenceEvents() {
@@ -87,6 +114,7 @@ public class HomeFragment extends BaseFragment
             @Override
             public void onReady(GeofenceMonitor geofenceMonitor) {
                 HomeFragment.this.geofenceMonitor = geofenceMonitor;
+                HomeFragment.this.geofenceMonitor.setMotionStrategy(false);
                 HomeFragment.this.geofenceMonitor.setGeofenceEventListener(HomeFragment.this);
                 HomeFragment.this.geofenceMonitor.setOnLocationProviderChangeListener(HomeFragment.this);
                 monitorGeofences(geofences);
@@ -97,6 +125,8 @@ public class HomeFragment extends BaseFragment
     @Override
     public void onMapReady(GoogleMap googleMap) {
         homeView.setupMap(googleMap);
+        setupGps();
+
         Realm.getDefaultInstance()
                 .where(MyGeofence.class)
                 .findAllAsync()
@@ -159,6 +189,21 @@ public class HomeFragment extends BaseFragment
 
     }
 
+    @Override
+    public void enableGps() {
+        if (permissionsGaranted)
+            Utils.showEnableGpsDialog(getActivity());
+        else
+            checkPermissions();
+    }
+
+    @Override
+    public void enableSignificantMotionStrategy(boolean enable) {
+        if(geofenceMonitor!=null){
+            geofenceMonitor.setMotionStrategy(enable);
+        }
+    }
+
 
     private void monitorGeofences(List<MyGeofence> geofences) {
         if (geofenceMonitor == null || !permissionsGaranted)
@@ -166,6 +211,24 @@ public class HomeFragment extends BaseFragment
         for (MyGeofence geofence : geofences) {
             geofenceMonitor.addGeofence(new Geofence(geofence.getId(), geofence.getTag(),
                     geofence.getLocation().latitude, geofence.getLocation().longitude, geofence.getRadius()));
+        }
+
+    }
+
+    @SuppressLint("MissingPermission")
+    private void setupGps() {
+        registerGpsStateChangeReceiver();
+        locationManager = (LocationManager) getActivity().getSystemService(Context.LOCATION_SERVICE);
+        boolean enabled = locationManager.isProviderEnabled(LocationManager.GPS_PROVIDER);
+        homeView.gpsEnabled(enabled);
+        if (enabled) {
+            Location last = locationManager.getLastKnownLocation(LocationManager.GPS_PROVIDER);
+            if (last == null)
+                last = locationManager.getLastKnownLocation(LocationManager.NETWORK_PROVIDER);
+            if (last == null)
+                last = locationManager.getLastKnownLocation(LocationManager.PASSIVE_PROVIDER);
+            if (last != null)
+                onLocationUpdated(last);
         }
 
     }
@@ -205,8 +268,9 @@ public class HomeFragment extends BaseFragment
         switch (requestCode) {
             case 0: {
                 if (grantResults.length > 0
-                        && grantResults[0] == PackageManager.PERMISSION_GRANTED ){
+                        && grantResults[0] == PackageManager.PERMISSION_GRANTED) {
                     permissionsGaranted = true;
+                    setupGps();
                     setupGeofenceEvents();
                 } else {
 
@@ -245,10 +309,15 @@ public class HomeFragment extends BaseFragment
         });
     }
 
+    @Override
+    public void onDestroyView() {
+        super.onDestroyView();
+        unRegisterGpsStateChangeReceiver();
+    }
 
     @Override
     public void onEvent(GeofenceMonitor.GeofenceEvent event, Geofence geofence) {
-        String message = (event == GeofenceMonitor.GeofenceEvent.Exit ? "Leaving" : "Entering") + " from " + geofence.getAlias();
+        String message = (event == GeofenceMonitor.GeofenceEvent.Exit ? "Leaving from" : "Entering to") + " " + geofence.getAlias();
         Utils.sendNotification(getActivity(), geofence.getAlias(), message);
     }
 
