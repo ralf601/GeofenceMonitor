@@ -295,6 +295,7 @@ public class GeofenceService extends Service implements GeofenceMonitor, Locatio
             enableGpsAndNetworkProvider(LocationUpdateConfig.getLowPowerConfig());
         } else {
             //enable network provider only
+            currentLocationUpdateConfig = LocationUpdateConfig.getLowPowerConfig();
             enableNetworkProvider();
         }
 
