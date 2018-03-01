@@ -44,7 +44,6 @@ public interface GeofenceMonitor {
     }
 
 
-
     /**
      * Add a geofence to monitor
      *
@@ -79,12 +78,14 @@ public interface GeofenceMonitor {
 
     /**
      * Listner for geofence events
+     *
      * @param geofenceEventListener
      */
     void setGeofenceEventListener(GeofenceEventListener geofenceEventListener);
 
     /**
      * Listener for current location provider
+     *
      * @param locationProviderChangeListener
      */
     void setOnLocationProviderChangeListener(OnLocationProviderChangeListener locationProviderChangeListener);
@@ -97,6 +98,7 @@ public interface GeofenceMonitor {
 
     /**
      * Use significant motion strategy to monitor geofence
+     *
      * @param enabled enable or disable strategy
      */
     void setMotionStrategy(boolean enabled);
@@ -104,6 +106,7 @@ public interface GeofenceMonitor {
 
     /**
      * Check if monitor is initialized
+     *
      * @return
      */
     boolean isInitialized();
