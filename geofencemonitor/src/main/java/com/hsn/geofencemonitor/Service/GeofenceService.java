@@ -58,15 +58,15 @@ public class GeofenceService extends Service implements GeofenceMonitor, Locatio
         }
 
         public static LocationUpdateConfig getLowPowerConfig() {
-            return new LocationUpdateConfig(10 * 1000, 3, 0, 30);
+            return new LocationUpdateConfig(5 * 1000, 3, 0, 30);
         }
 
         public static LocationUpdateConfig getMidPowerConfig() {
-            return new LocationUpdateConfig(5 * 1000, 2, 1, 15);
+            return new LocationUpdateConfig(2 * 1000, 2, 1, 15);
         }
 
         public static LocationUpdateConfig getHighPowerConfig() {
-            return new LocationUpdateConfig(500, 1, 2, 5);
+            return new LocationUpdateConfig(500, 0, 2, 5);
         }
     }
 
@@ -89,7 +89,7 @@ public class GeofenceService extends Service implements GeofenceMonitor, Locatio
     private boolean networkProviderEnabled = false;
     private boolean gpsProviderEnabled = false;
     private LocationUpdateConfig currentLocationUpdateConfig = LocationUpdateConfig.getMidPowerConfig();
-
+    private boolean binded = false;
 
     private final Runnable tuneLocationUpdates = new Runnable() {
         @Override
@@ -146,6 +146,7 @@ public class GeofenceService extends Service implements GeofenceMonitor, Locatio
     @Nullable
     @Override
     public IBinder onBind(Intent intent) {
+        binded=true;
         return mBinder;
     }
 
@@ -230,6 +231,11 @@ public class GeofenceService extends Service implements GeofenceMonitor, Locatio
             }
 
         }
+    }
+
+    @Override
+    public boolean isInitialized() {
+        return binded;
     }
 
     @Override

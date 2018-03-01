@@ -96,9 +96,16 @@ public interface GeofenceMonitor {
 
 
     /**
-     * Use siginificant motion strategy to monitor geofence
+     * Use significant motion strategy to monitor geofence
      * @param enabled enable or disable strategy
      */
     void setMotionStrategy(boolean enabled);
+
+
+    /**
+     * Check if monitor is initialized
+     * @return
+     */
+    boolean isInitialized();
 
 }

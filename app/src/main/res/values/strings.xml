@@ -10,6 +10,6 @@
     <string name="empty_error">Please enter a value</string>
     <string name="invalid_value_error">Invalid value</string>
     <string name="please_enable_gps">Please enable gps</string>
-    <string name="enable_significant_motion_strategy">Enable significant motion strategy</string>
+    <string name="enable_significant_motion_strategy">Enable significant motion strategy(Experimental)</string>
 
 </resources>

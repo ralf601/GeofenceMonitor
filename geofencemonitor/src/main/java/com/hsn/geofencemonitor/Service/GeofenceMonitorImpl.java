@@ -72,8 +72,8 @@ public class GeofenceMonitorImpl implements GeofenceMonitor, ServiceConnection {
 
     @Override
     public void setGeofenceEventListener(GeofenceEventListener geofenceEventListener) {
-       checkReady();
-       geofenceMonitor.setGeofenceEventListener(geofenceEventListener);
+        checkReady();
+        geofenceMonitor.setGeofenceEventListener(geofenceEventListener);
     }
 
     @Override
@@ -94,6 +94,11 @@ public class GeofenceMonitorImpl implements GeofenceMonitor, ServiceConnection {
     public void setMotionStrategy(boolean enabled) {
         checkReady();
         geofenceMonitor.setMotionStrategy(enabled);
+    }
+
+    @Override
+    public boolean isInitialized() {
+        return geofenceMonitor != null;
     }
 
     @Override
