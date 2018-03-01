@@ -38,11 +38,11 @@ public class GeofenceService extends Service implements GeofenceMonitor, Locatio
         public String toString() {
             switch (type) {
                 case 0:
-                    return "LowPower@" + minLocationUpdateTime / 1000 + "s";
+                    return "LowPower@" + minLocationUpdateTime / 1000 + "s"+"@"+minAccuracy+"m(Accuracy)";
                 case 1:
-                    return "MedPower@" + minLocationUpdateTime / 1000 + "s";
+                    return "MedPower@" + minLocationUpdateTime / 1000 + "s"+"@"+minAccuracy+"m(Accuracy)";
                 case 2:
-                    return "HighPower@" + minLocationUpdateTime / 1000 + "s";
+                    return "HighPower@" + minLocationUpdateTime / 1000 + "s"+"@"+minAccuracy+"m(Accuracy)";
             }
             return "unknown";
         }
@@ -62,11 +62,11 @@ public class GeofenceService extends Service implements GeofenceMonitor, Locatio
         }
 
         public static LocationUpdateConfig getMidPowerConfig() {
-            return new LocationUpdateConfig(5 * 1000, 2, 1, 120);
+            return new LocationUpdateConfig(5 * 1000, 2, 1, 15);
         }
 
         public static LocationUpdateConfig getHighPowerConfig() {
-            return new LocationUpdateConfig(1 * 1000, 1, 2, 3);
+            return new LocationUpdateConfig(500, 1, 2, 5);
         }
     }
 
@@ -284,7 +284,7 @@ public class GeofenceService extends Service implements GeofenceMonitor, Locatio
             disableAllProviders();
             return;
         }
-        if (distance < 10) {
+        if (distance < 20) {
             //need to turn on gps
             enableGpsAndNetworkProvider(LocationUpdateConfig.getHighPowerConfig());
         } else if (distance < 50) {
@@ -340,7 +340,7 @@ public class GeofenceService extends Service implements GeofenceMonitor, Locatio
         for (Geofence geofence : geofenceMap.values()) {
             Location.distanceBetween(geofence.getLat(), geofence.getLon(), lastLocation.getLatitude(), lastLocation.getLongitude(), distance);
 
-            if (distance[0] > geofence.getRadius()) {
+            if (distance[0] > geofence.getRadius() - 1) { //to avoid unnecessary toggles
                 //outside this geofence
                 if (distanceToNearestGeoFenceEvent == null || (distance[0] - geofence.getRadius()) < distanceToNearestGeoFenceEvent) {
                     //getting least distance to a geofence event
@@ -364,7 +364,7 @@ public class GeofenceService extends Service implements GeofenceMonitor, Locatio
         for (Geofence geofence : geofenceMap.values()) {
             Location.distanceBetween(geofence.getLat(), geofence.getLon(), lastLocation.getLatitude(), lastLocation.getLongitude(), distance);
 
-            if (distance[0] > geofence.getRadius()) {
+            if (distance[0] > geofence.getRadius() - 1) { //to avoid unnecessary toggles) {
                 //outside
                 if (geofence.getState() == Geofence.STATE_INSIDE) {
                     geofence.setState(Geofence.STATE_OUTSIDE);

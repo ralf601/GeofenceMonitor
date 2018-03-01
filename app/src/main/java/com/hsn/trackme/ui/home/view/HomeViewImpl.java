@@ -163,7 +163,7 @@ public class HomeViewImpl implements HomeView, NotificationHistoryAdapter.OnItem
 
         if (!cameraMoved) {
             cameraMoved = true;
-            CameraUpdate cameraUpdate = CameraUpdateFactory.newLatLngZoom(new LatLng(location.getLatitude(), location.getLongitude()), 10);
+            CameraUpdate cameraUpdate = CameraUpdateFactory.newLatLngZoom(new LatLng(location.getLatitude(), location.getLongitude()), 15);
             mMap.animateCamera(cameraUpdate);
         }
     }

@@ -9,6 +9,7 @@ import android.content.Intent;
 import android.content.IntentFilter;
 import android.content.pm.PackageManager;
 import android.location.Location;
+import android.location.LocationListener;
 import android.location.LocationManager;
 import android.os.Bundle;
 import android.support.annotation.NonNull;
@@ -71,8 +72,25 @@ public class HomeFragment extends BaseFragment
             locationManager = (LocationManager) getActivity().getSystemService(Context.LOCATION_SERVICE);
             boolean enabled = locationManager.isProviderEnabled(LocationManager.GPS_PROVIDER);
             homeView.gpsEnabled(enabled);
+            if (enabled && ContextCompat.checkSelfPermission(getActivity(),
+                    Manifest.permission.ACCESS_FINE_LOCATION)
+                    == PackageManager.PERMISSION_GRANTED) {
+                Location last = locationManager.getLastKnownLocation(LocationManager.GPS_PROVIDER);
+                if (last == null)
+                    last = locationManager.getLastKnownLocation(LocationManager.NETWORK_PROVIDER);
+                if (last == null)
+                    last = locationManager.getLastKnownLocation(LocationManager.PASSIVE_PROVIDER);
+                if (last != null) {
+                    onLocationUpdated(last);
+                } else {
+                    fetchLocationOnce();
+                }
+
+            }
+
         }
     };
+
 
     private void registerGpsStateChangeReceiver() {
         getActivity().registerReceiver(gpsStateChangeReceiver, new IntentFilter("android.location.PROVIDERS_CHANGED"));
@@ -237,6 +255,7 @@ public class HomeFragment extends BaseFragment
                 last = locationManager.getLastKnownLocation(LocationManager.PASSIVE_PROVIDER);
             if (last != null)
                 onLocationUpdated(last);
+            else fetchLocationOnce();
         }
 
     }
@@ -292,6 +311,37 @@ public class HomeFragment extends BaseFragment
         }
     }
 
+    private void fetchLocationOnce() {
+        if (ContextCompat.checkSelfPermission(getActivity(),
+                Manifest.permission.ACCESS_FINE_LOCATION)
+                != PackageManager.PERMISSION_GRANTED) {
+            return;
+        }
+        LocationListener locationListener = new LocationListener() {
+            @Override
+            public void onLocationChanged(Location location) {
+                onLocationUpdated(location);
+            }
+
+            @Override
+            public void onStatusChanged(String s, int i, Bundle bundle) {
+
+            }
+
+            @Override
+            public void onProviderEnabled(String s) {
+
+            }
+
+            @Override
+            public void onProviderDisabled(String s) {
+
+            }
+        };
+        locationManager.requestSingleUpdate(LocationManager.GPS_PROVIDER, locationListener, null);
+        locationManager.requestSingleUpdate(LocationManager.NETWORK_PROVIDER, locationListener, null);
+    }
+
     private void addGeofenceToDb(final MyGeofence geofence) {
 
         Realm.getDefaultInstance().executeTransactionAsync(new Realm.Transaction() {
@@ -331,7 +381,7 @@ public class HomeFragment extends BaseFragment
             @Override
             public void execute(Realm realm) {
                 MyGeofence geofence1 = new MyGeofence(new LatLng(geofence.getLat(), geofence.getLon()), geofence.getRadius(), geofence.getAlias());
-                int type = event == GeofenceMonitor.GeofenceEvent.Exit ? Notification.NOTIFICATION_ENTER_GEOFENCE : Notification.NOTIFICATION_ENTER_GEOFENCE;
+                int type = event == GeofenceMonitor.GeofenceEvent.Exit ? Notification.NOTIFICATION_EXIT_GEOFENCE : Notification.NOTIFICATION_ENTER_GEOFENCE;
                 Notification notification = new Notification(geofence1, Utils.getDateTimeForUi(), type);
                 realm.insertOrUpdate(notification);
             }
@@ -340,15 +390,15 @@ public class HomeFragment extends BaseFragment
             public void onSuccess() {
                 Realm.getDefaultInstance().where(Notification.class).findAllSortedAsync("dateTime", Sort.DESCENDING)
                         .addChangeListener(new RealmChangeListener<RealmResults<Notification>>() {
-                    @Override
-                    public void onChange(RealmResults<Notification> notifications) {
-                        try {
-                            homeView.bindNotificationHistory(notifications);
-                        } catch (Exception e) {
-                            e.printStackTrace();
-                        }
-                    }
-                });
+                            @Override
+                            public void onChange(RealmResults<Notification> notifications) {
+                                try {
+                                    homeView.bindNotificationHistory(notifications);
+                                } catch (Exception e) {
+                                    e.printStackTrace();
+                                }
+                            }
+                        });
             }
         });
     }
